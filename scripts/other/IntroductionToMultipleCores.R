@@ -12,11 +12,13 @@ suppressPackageStartupMessages(library(doParallel)) # parallel
 matrixList <- lapply(1:30, FUN = function(x) matrix(runif(1e6),1e3,1e3))
 
 ### SINGLE CORE ###
+# approximately 23 sec
 system.time({
   lapply(matrixList, FUN = function(x) solve(x))
 })
 
 ### MULTIPLE CORES ###
+# approximately 13 sec
 cl <- makeCluster(detectCores()[1]-1,outfile = NULL, verbose = TRUE)
 registerDoParallel(cl)
 system.time({

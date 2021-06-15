@@ -272,7 +272,7 @@ getPatterns <- function(which_patterns=1:15, H=F){
   return(raw_patterns[which_patterns])
 }
 # preprocess raw data (remove noise dimensions and normalize)
-preprocessPatterns <- function(raw_patterns, save_data=T, folder_path='data/stick person/preprocessed/', H=T, smoothen=T){
+preprocessPatterns <- function(raw_patterns, save_data=T, folder_path='data/human motion/preprocessed/', H=T, smoothen=T){
   # H=TRUE means that we are using Herbert's data
 
   ### REMOVE DIMENSIONS THAT ARE CONSTANT OR ONLY NOISE

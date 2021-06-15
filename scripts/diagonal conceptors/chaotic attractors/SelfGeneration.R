@@ -7,8 +7,6 @@ set.seed(6)
 ### SOURCES ###
 source('source/Libraries.R')
 source('source/GeneralFunctions.R')
-source('source/DiagonalConceptorsFunctions.R')
-source('source/PreprocessingFunctions.R')
 
 #################
 ### LOAD DATA ###
