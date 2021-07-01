@@ -215,7 +215,7 @@ for(p in 1:n_pattern){
 nrmses <- nrmse(target_outputs,sg_outputs)
 
 # plot (part of the) patterns
-k_pattern <- 2
+k_pattern <- 15
 nrow_plots <- 3
 which_patterns_plot <- 1:(nrow_plots^2)
 par(mfrow=c(nrow_plots,nrow_plots), mar=rep(2,4))

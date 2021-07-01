@@ -27,9 +27,13 @@ n_points <- sapply(patterns, FUN = function(x) dim(x)[1]) # length of each patte
 
 # plot the patterns
 par(mfrow=c(2,2), mar=c(2.1, 3, 2.1, 2.1))
-for(p in 1:4) plot(patterns[[p]][,1], patterns[[p]][,2], type = ifelse(p==4, 'p', 'l'), 
-                   xlim = c(0,1), ylim = c(0,1), 
-                   xlab = '', ylab = '')
+for(p in 1:4){
+  plot(patterns[[p]][,1], patterns[[p]][,2], type = ifelse(p==4, 'p', 'l'), 
+       xlim = c(0,1), ylim = c(0,1), 
+       xlab = '', ylab = '', xaxt='n', yaxt='n')
+  axis(side = 1, at=c(0,0.5,1), cex.axis=1.5)
+  axis(side = 2, at=c(0,0.5,1), cex.axis=1.5)
+}
 
 ##################
 ### PARAMETERS ###

@@ -52,7 +52,7 @@ for(p in 1:n_pattern){
   # create progress bar
   pb <- txtProgressBar(1,n_run[p]+2*n_washout[p], style = 3)
   for(n in 1:(n_run[p]+2*n_washout[p])){
-    r <- tanh(W %*% z + b) + rnorm(N,0,0.01)
+    r <- tanh(W %*% z + b)
     z <- (1-leaking_rate) * z + leaking_rate * cs[[p]]*r
     
     if(n > 2*n_washout[p]){
@@ -77,7 +77,7 @@ shifted_patterns <- lapply(1:n_pattern, function(p) shiftPattern(sg_outputs[[p]]
 ####################
 # compare target outputs and self-generated outputs (plotting and Normalized Root Mean Square Error (NRMSE))
 par(mfrow=c(2,2), mar=rep(3,4))
-n_plot <- 50
+n_plot <- 30
 nrmses <- rep(NA, n_pattern)
 st <- 1
 for(p in 1:n_pattern){
@@ -89,8 +89,23 @@ for(p in 1:n_pattern){
        xlab = '', ylab = '', main = paste0('Pattern ',p),
        ylim = c(-1,1))
   lines(shifted_patterns[[p]]$pattern[st:(st+n_plot)], col=2, lwd=3, lty=2)
-  legend('bottomleft', legend=c(paste0('error=',round(nrmses[p],5))))
+  #legend('bottomleft', legend=c(paste0('error=',round(nrmses[p],5))))
 }
 
 
+
+par(mfrow=c(2,1), mar=c(1,1,1,1))
+n <- 5
+x <- seq(-n,n,0.0005)
+plot(x, as.integer(x>0), type = 'l', xaxt='n', yaxt='n', xlab='', ylab='', ylim=c(-0.5,1.5))
+grid()
+abline(h=0, lty=2, lwd=2)
+abline(v=0, lty=2, lwd=2)
+lines(x, as.integer(x>0), lwd=3, col=2)
+
+plot(x, tanh(x), type = 'l', xaxt='n', yaxt='n', xlab='', ylab='', ylim = c(-1.5,1.5))
+abline(h=0, lty=2, lwd=2)
+abline(v=0, lty=2, lwd=2)
+grid()
+lines(x, tanh(x), lwd=3, col=2)
 

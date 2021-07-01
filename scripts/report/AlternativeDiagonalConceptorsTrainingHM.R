@@ -14,41 +14,65 @@ source('source/PreprocessingFunctions.R')
 ### DATA SETUP ###
 ##################
 # read pre-generated patterns to avoid randomness
-file_path <- 'data/periodic patterns/diagonal conceptors/patterns5000.RData'
-if(file.exists(file_path)){
-  load(file_path)
+file_path_preprocessed_patterns <- 'data/human motion/preprocessed/herbert/patterns.RData'
+if(file.exists(file_path_preprocessed_patterns)){
+  load(file_path_preprocessed_patterns)
 }else{
-  patterns <- createExamplePatterns(generate_new_data=T, L=1000, 
-                                    folder_path='data/periodic patterns/diagonal conceptors/')
-  save(patterns, file=file_path) 
+  # get patterns from folder
+  raw_patterns <- getPatterns(H = T)
+  
+  # preprocess patterns and save the scalings parameters
+  preprocessed_patterns <- preprocessPatterns(raw_patterns, H = T)
+  
+  # save preprocessed patterns
+  save(preprocessed_patterns, file=file_path_preprocessed_patterns) 
 }
+# get patterns
+removed_dimensions <- preprocessed_patterns$removed_dimensions
+scalings <- preprocessed_patterns$scalings
+patterns <- preprocessed_patterns$patterns
+
 # set pattern variables
 n_pattern <- length(patterns) # number of patterns
 n_points <- sapply(patterns, FUN = function(x) dim(x)[1]) # length of each pattern
 
-# plot (part of) the patterns
-par(mfrow=c(2,2))
-n_plot <- 40
-for(p in 1:4) plot(patterns[[p]][1:n_plot], type = 'l', ylim = c(-1,1), ylab = '')
+# plot (part of the) patterns
+k_patterns <- c(1,13,4,3)
+names_p <- c('boxing 1', 'standing up', 'cart wheel', 'boxing 2')
+n_plots <- 1
+axis_show <- matrix(c(350,700,200,400,75,150,100,200),2,4)
+par(mfrow=c(n_plots,length(k_patterns)), mar=c(3.1,2.6,2.5,1.1), oma=c(0,0,0,0))
+for(i in 1:n_plots){
+  for(p in 1:length(k_patterns)){
+    plot(patterns[[k_patterns[p]]][,i], type = 'l', ylim = c(-1,1), 
+         xlab = '', ylab = '', yaxt = 'n', lwd=2, cex.axis = 1.3)
+    #axis(side = 1, at = c(0,axis_show[1,p],axis_show[2,p]), labels = c(0,axis_show[1,p],axis_show[2,p]))
+    axis(side = 2, at = c(-1,0,1), labels = c(-1,0,1), cex.axis=1.3)
+    title(main = if(i==1) names_p[p], line = 0.7)
+  }
+}
 
 ##################
 ### PARAMETERS ###
 ##################
 # scaling
-W_in_scaling <- 1
-b_scaling <- 0.2
+W_in_scaling <- 0.1
+b_scaling <- 0.1
 W_star_scaling <- 1
 
 # leaking rate
-leaking_rate <- 1
+leaking_rate <- 0.15
 
 # apertures
-apertures <- rep(7,n_pattern)
+apertures <- rep(35,n_pattern)
+apertures[1] <- 8
+apertures[2] <- 8
+apertures[3] <- 20
+apertures[4] <- 8
+apertures[8] <- 8
+apertures[13] <- 30
+apertures[15] <- 8
 apertures_2 <- apertures^-2
-
-# regularization
-reg_out <- 0
-reg_W <- 1e-3
 
 # other parameters
 verbose <- T
@@ -59,7 +83,7 @@ save_results <- F
 #######################
 # dimensions
 M <- ncol(patterns[[1]]) # dimension of output 
-N <- 100 # reservoir size
+N <- 1500 # reservoir size
 
 # create raw (not scaled yet) weights
 W_in_raw <- createInitialInputWeights() # dim=NxM (never modified after initialization, only scaled)
@@ -72,9 +96,11 @@ b <- b_raw * b_scaling
 W_star <- W_star_raw * W_star_scaling
 
 # period lengths
-n_washout <- rep(100,n_pattern)
-n_adapt <- rep(500,n_pattern)
+n_washout <- rep(50,n_pattern)
+n_adapt <- ceiling(n_points * (1/3))
+n_adapt[15] <- 400
 n_learn <- n_points - n_washout
+n_adapt <- n_learn
 
 ### DRIVE RESERVOIR ###
 # diagonal conceptors (initial randomly)
@@ -174,6 +200,10 @@ plotNeuronStates(X=all_training_r, n=20, l=50)
 #############################
 ### (RE)COMPUTING WEIGHTS ###
 #############################
+# regularization
+reg_out <- 0.1
+reg_W <- 0.05
+
 # compute the output weights
 cp_W_out <- computeOutputWeights(all_training_states = all_training_r, 
                                  all_training_output = all_training_output,
@@ -190,90 +220,65 @@ W <- cp_W$W
 ### SELF-GENERATE PATTERNS ###
 ##############################
 # let reservoir self-generate with diagonal conceptors
-n_run <- n_points
-n_washout2 <- 2*n_washout
+n_run <- n_learn
 sg_outputs <- list()
 for(p in 1:n_pattern){
-  pattern <- patterns[[p]]
-  if(verbose) print(paste('pattern',p))
+  if(verbose) print(paste0('Pattern ',p))
+  # empty collectors
+  p_collector <- matrix(0,M,n_run[p])
   
-  output_collector <- matrix(0,M,n_run[p])
-  
-  # initial state
-  r <- matrix(runif(N),N,1)
-  z <- cs[[p]] * r
+  # initial states
+  z <- start_z[[p]]
   
   # create progress bar
-  if(verbose) pb <- txtProgressBar(1,n_run[p]+n_washout2[p], style = 3)
-  for(n in 1:(n_run[p]+n_washout2[p])){
-    r <- tanh(W %*% z + b)
-    z <- (1-leaking_rate) * z + leaking_rate * cs[[p]]*r
+  if(verbose) pb <- txtProgressBar(1,n_run[p], style = 3)
+  for(n in 1:n_run[p]){
+    # update equation
+    z_old <- z
+    r <- tanh(W %*% z_old + b)
+    z <- (1-leaking_rate) * z_old + leaking_rate * cs[[p]]*r
     
-    if(n > n_washout2[p]){
-      output_collector[,n-n_washout2[p]] <- W_out %*% r
-    }
+    # compute output
+    p_collector[,n] <- W_out %*% r
     
     # update progress bar
     if(verbose) setTxtProgressBar(pb, n)
   }
-  
-  sg_outputs[[p]] <- t(output_collector)
+  sg_outputs[[p]] <- t(p_collector)
 }
-
-# shift the output of the sg_outputs for comparison
-shifted_patterns <- lapply(1:n_pattern, function(p) shiftPattern(sg_outputs[[p]], 
-                                                                 patterns[[p]],
-                                                                 max_shift = 100,
-                                                                 shift_along = 'rows'))
-
-tr_st <- splitMatrixToList(all_training_r, n_learn)
-R <- lapply(tr_st, function(X) X%*%t(X)/ncol(X))
-singular_values_R <- lapply(R, function(x) svd(x)$d)
 
 ####################
 ### PLOT RESULTS ###
 ####################
-# compare target outputs and self-generated outputs (plotting and Normalized Root Mean Square Error (NRMSE))
-par(mfrow=c(n_pattern,4), mar=c(1,3,2.5,1), oma=c(2,0,2,1))
-n_plot <- 30
-nrmses <- rep(NA, n_pattern)
-st <- c(8,8,3,3)
-for(p in 1:n_pattern){
-  # observed and target pattern
-  nrmses[p] <- shifted_patterns[[p]]$nrmse
-  if(verbose) print(paste0('pattern ',p,' nrmse : ', round(nrmses[p],10)))
-  
-  # plot outputs
-  plot(shifted_patterns[[p]]$target_pattern[st[p]:(st[p]+n_plot)], type = 'l', 
-       xlab = '', ylab = '', xaxt='n', yaxt='n',
-       main = if(p==1) 'driver and y', cex.main=2,
-       ylim = c(-1,1))
-  axis(side = 1, at = c(0,15,30), labels = c('0','15','30'), cex.axis = 1.5)
-  axis(side = 2, at = c(-1,0,1), labels = c('-1','0','1'), cex.axis = 1.5)
-  lines(shifted_patterns[[p]]$pattern[st[p]:(st[p]+n_plot)], col=2, lwd=3, lty=2)
-  legend('bottomleft', legend=c(round(nrmses[p],5)), x.intersp = 0, cex=1.5)
-  
-  # random reservoir states
-  n_random_states <- 4
-  random_neurons <- sample(1:N, n_random_states)
-  matplot(t(tr_st[[p]][random_neurons,1:n_plot]), type='l', 
-          xlab='', ylab = '', xaxt='n', yaxt='n',
-          main = if(p==1) 'reservoir states', cex.main=2,
-          ylim = c(-1,1))
-  axis(side = 1, at = c(0,15,30), labels = c('0','15','30'), cex.axis = 1.5)
-  axis(side = 2, at = c(-1,0,1), labels = c('-1','0','1'), cex.axis = 1.5)
-  
-  # log10 PC energy
-  plot(log10(singular_values_R[[p]]), type = 'l', lwd=2,
-       xlab='', ylab='', xaxt='n', yaxt='n', ylim=c(-20,10),
-       main = if(p==1) 'log10 singular values', cex.main=2)
-  axis(side = 1, at = c(0,50,100), labels = c('0','50','100'), cex.axis = 1.5)
-  axis(side = 2, at = c(-20,-10,0,10), labels = c('-20','-10','0','10'), cex.axis = 1.5)
-  
-  # leading PC energy
-  plot(singular_values_R[[p]][1:10], type = 'l',lwd=2,
-       xlab='', ylab='', xaxt='n', yaxt='n', ylim = c(0,30),
-       main = if(p==1) '10 largest singular values', cex.main=2)
-  axis(side = 1, at = c(0,5,10), labels = c('0','5','10'), cex.axis = 1.5)
-  axis(side = 2, at = c(0,15,30), labels = c('0','15','30'), cex.axis = 1.5)
+# compute the nrmses
+nrmses <- nrmse(target_outputs,sg_outputs)
+
+# plot (part of the) patterns
+k_pattern <- 2
+nrow_plots <- 4
+which_patterns_plot <- 1:(nrow_plots^2)
+which_patterns_plot <- order(nrmses[[k_pattern]]$all_nrmses, decreasing = T)[1:(nrow_plots^2)]
+par(mfrow=c(nrow_plots,nrow_plots), mar=rep(2,4))
+for(i in 1:length(which_patterns_plot)){
+  # plot the "worst" patterns
+  plot(target_outputs[[k_pattern]][,which_patterns_plot[i]], type = 'l', ylim = c(-1,1), ylab = '')
+  lines(sg_outputs[[k_pattern]][,which_patterns_plot[i]], col=2)
+  nrmse_i <- nrmse(target_outputs[[k_pattern]][,which_patterns_plot[i]], 
+                   sg_outputs[[k_pattern]][,which_patterns_plot[i]])
+  legend('bottomleft', legend=c(paste0('error=',round(nrmse_i,3)))) 
 }
+
+# compute errors
+for(p in 1:n_pattern){
+  if(p==1) if(verbose) print('Normalized Root Mean Square Error')
+  if(verbose) print(paste0('p',p,
+                           ': ', round(nrmses[[p]]$mean_nrmse,3), 
+                           ', min=', round(nrmses[[p]]$min_nrmse,3),
+                           ', max=',round(nrmses[[p]]$max_nrmse,3)))
+}
+nrmse_df <- t(data.frame('min'=round(sapply(nrmses, function(x) x$min_nrmse),3),
+                         'max'=round(sapply(nrmses, function(x) x$max_nrmse),3),
+                         'mean'=round(sapply(nrmses, function(x) x$mean_nrmse),3),
+                         'std'=round(sqrt(sapply(nrmses, function(x) var(x$all_nrmses))),3)))
+colnames(nrmse_df) <- 1:n_pattern
+View(nrmse_df)

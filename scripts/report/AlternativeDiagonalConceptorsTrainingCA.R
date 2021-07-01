@@ -44,7 +44,7 @@ W_star_scaling <- 1.5
 leaking_rate <- 1
 
 # apertures
-apertures <- c(10,6,9,5)
+apertures <- c(10,7,9,5)
 apertures_2 <- apertures^-2
 
 # other parameters
@@ -71,7 +71,7 @@ W_star <- W_star_raw * W_star_scaling
 # period lengths
 n_washout <- rep(100,n_pattern)
 n_adapt <- rep(400,n_pattern)
-n_learn <- n_points - n_adapt - n_washout
+n_learn <- n_points - n_washout
 
 ### DRIVE RESERVOIR ###
 # diagonal conceptors (initial randomly)
@@ -83,13 +83,14 @@ all_training_z_old <- c()
 all_training_D_target <- c()
 all_training_W_target <- c()
 all_training_output <- c()
+start_z <- list()
 # collect data from driving the reservoir with different drivers
 for(p in 1:n_pattern){
   pattern <- patterns[[p]]
   if(verbose) print(paste('pattern',p))
   
   # adapt period collectors
-  z_collector <- c()
+  z_collector <- matrix(0,N,n_adapt[p])
   
   # learn period collectors
   r_collector <- matrix(0,N,n_learn[p])
@@ -104,32 +105,53 @@ for(p in 1:n_pattern){
   
   # create progress bar
   if(verbose) pb <- txtProgressBar(1,n_washout[p]+n_adapt[p]+n_learn[p])
-  for(n in 1:(n_washout[p]+n_adapt[p]+n_learn[p])){
+  for(n in 1:n_washout[p]){
     u <- pattern[n,]
+    r <- tanh(W_star %*% z + W_in %*% u + b)
+    z <- (1-leaking_rate) * z + leaking_rate * cs[[p]]*r
+    
+    if(n == n_washout[p]) start_z[[p]] <- z
+    
+    # update progress bar
+    if(verbose) setTxtProgressBar(pb, n)
+  }
+  
+  for(n in 1:n_adapt[p]){
+    u <- pattern[n_washout[p]+n,]
+    r <- tanh(W_star %*% z + W_in %*% u + b)
+    z <- (1-leaking_rate) * z + leaking_rate * cs[[p]]*r
+    
+    # collect z
+    z_collector[,n] <- z
+    
+    # compute diagonal conceptors
+    if(n==n_adapt[p]){
+      R_adj <- rowMeans(z_collector^2)
+      cs[[p]] <- R_adj*(R_adj+apertures_2[p])^-1
+    }
+    
+    # update progress bar
+    if(verbose) setTxtProgressBar(pb, n_washout[p] + n)
+  }
+  
+  z <- start_z[[p]]
+  for(n in 1:n_learn[p]){
+    u <- pattern[n_washout[p] + n,]
     z_old <- z
     D_target <- W_in %*% u
     W_target <- W_star %*% z_old + D_target
     r <- tanh(W_target + b)
     z <- (1-leaking_rate) * z_old + leaking_rate * cs[[p]]*r
     
-    if(n > n_washout[p] && n <= n_washout[p] + n_adapt[p]){
-      z_collector <- cbind(z_collector, z)
-      
-      R_adj <- rowMeans(z_collector^2)
-      cs[[p]] <- R_adj*(R_adj+apertures_2[p])^-1
-    }
-    
-    if(n > n_washout[p]+n_adapt[p]){
-      # collect states, output and G_target for computing W_out and G later
-      r_collector[,n-n_washout[p]-n_adapt[p]] <- r
-      z_old_collector[,n-n_washout[p]-n_adapt[p]] <- z_old
-      D_target_collector[,n-n_washout[p]-n_adapt[p]] <- D_target
-      W_target_collector[,n-n_washout[p]-n_adapt[p]] <- W_target
-      output_collector[,n-n_washout[p]-n_adapt[p]] <- u
-    }
+    # collect states, output and G_target for computing W_out and G later
+    r_collector[,n] <- r
+    z_old_collector[,n] <- z_old
+    D_target_collector[,n] <- D_target
+    W_target_collector[,n] <- W_target
+    output_collector[,n] <- u
     
     # update progress bar
-    if(verbose) setTxtProgressBar(pb, n)
+    if(verbose) setTxtProgressBar(pb, n_washout[p] + n_adapt[p] + n)
   }
   
   # construct concatenated matrices
@@ -143,7 +165,6 @@ for(p in 1:n_pattern){
 # split training outputs matrix into a list
 target_outputs <- splitMatrixToList(t(all_training_output), lengths = n_learn, splitAlong = 'rows')
 
-
 # plot some neuron states
 plotNeuronStates(X=all_training_r, n=20, l=50)
 
@@ -153,8 +174,6 @@ plotNeuronStates(X=all_training_r, n=20, l=50)
 # regularization
 reg_out <- 0
 reg_W <- 0.01
-compute_D <- F
-if(compute_D) reg_D <- 1e-2
 
 # compute the output weights
 cp_W_out <- computeOutputWeights(all_training_states = all_training_r, 
@@ -163,18 +182,10 @@ cp_W_out <- computeOutputWeights(all_training_states = all_training_r,
 W_out <- cp_W_out$W_out
 
 # recompute reservoir weights (loading the patterns into the reservoir)
-if(compute_D){
-  cp_D <- recomputeReservoirWeights(all_training_states_old = all_training_z_old,
-                                    all_training_W_target = all_training_D_target,
-                                    reg_W = reg_D, verbose = verbose)
-  D <- cp_D$W
-  W <- W_star + D
-}else{
-  cp_W <- recomputeReservoirWeights(all_training_states_old = all_training_z_old, 
-                                    all_training_W_target = all_training_W_target,
-                                    reg_W = reg_W, verbose = verbose)
-  W <- cp_W$W
-}
+cp_W <- recomputeReservoirWeights(all_training_states_old = all_training_z_old, 
+                                  all_training_W_target = all_training_W_target,
+                                  reg_W = reg_W, verbose = verbose)
+W <- cp_W$W
 
 ##############################
 ### SELF-GENERATE PATTERNS ###
@@ -222,21 +233,5 @@ for(p in 1:n_pattern){
        col = 2,
        xlim = c(0,1), ylim = c(0,1),
        xlab = '', ylab = '', xaxt='n', yaxt='n')
-}
-
-####################
-### SAVE RESULTS ###
-####################
-if(save_results){
-  if(verbose) print('Saving results...')
-  reservoir <- list('patterns'=patterns, 
-                    'cs'=cs,
-                    'W'=W,
-                    'b'=b,
-                    'W_out'=W_out,
-                    'n_washout'=n_washout2,
-                    'leaking_rate'=leaking_rate)
-  save(reservoir, file = 'output/reservoirs/reservoir_dc_ca.RData')
-  if(verbose) print('Done!')
 }
 

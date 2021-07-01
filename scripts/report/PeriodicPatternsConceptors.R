@@ -60,6 +60,7 @@ apertures <- rep(100,n_pattern)
 show_plots <- T
 verbose <- T
 save_results <- F
+save_plot <- F
 
 #######################
 ### RESERVOIR SETUP ###
@@ -201,6 +202,7 @@ shifted_patterns <- lapply(1:n_pattern, function(p) shiftPattern(sg_outputs[[p]]
 ### PLOT RESULTS ###
 ####################
 # compare target outputs and self-generated outputs (plotting and Normalized Root Mean Square Error (NRMSE))
+if(save_plot) png("output/plots/c_pp_results.png", pointsize = 10, width = 2800, height = 1800, res = 280)
 par(mfrow=c(n_pattern,4), mar=c(1,3,2.5,1), oma=c(2,0,2,1))
 n_plot <- 30
 nrmses <- rep(NA, n_pattern)
@@ -214,19 +216,19 @@ for(p in 1:n_pattern){
   # plot outputs
   plot(shifted_patterns[[p]]$target_pattern[st[p]:(st[p]+n_plot)], type = 'l', 
        xlab = '', ylab = '', xaxt='n', yaxt='n',
-       main = if(p==1) 'driver and y', cex.main=1.5,
+       main = if(p==1) 'driver and y', cex.main=2,
        ylim = c(-1,1))
   axis(side = 1, at = c(0,15,30), labels = c('0','15','30'), cex.axis = 1.5)
   axis(side = 2, at = c(-1,0,1), labels = c('-1','0','1'), cex.axis = 1.5)
   lines(shifted_patterns[[p]]$pattern[st[p]:(st[p]+n_plot)], col=2, lwd=3, lty=2)
-  legend('bottomleft', legend=c(round(nrmses[p],5)), x.intersp = 0, cex=1.3)
+  legend('bottomleft', legend=c(round(nrmses[p],5)), x.intersp = 0, cex=1.5)
   
   # random reservoir states
   n_random_states <- 4
   random_neurons <- sample(1:N, n_random_states)
   matplot(t(tr_st[[p]][random_neurons,1:n_plot]), type='l', 
           xlab='', ylab = '', xaxt='n', yaxt='n',
-          main = if(p==1) 'reservoir states', cex.main=1.5,
+          main = if(p==1) 'reservoir states', cex.main=2,
           ylim = c(-1,1))
   axis(side = 1, at = c(0,15,30), labels = c('0','15','30'), cex.axis = 1.5)
   axis(side = 2, at = c(-1,0,1), labels = c('-1','0','1'), cex.axis = 1.5)
@@ -234,7 +236,7 @@ for(p in 1:n_pattern){
   # log10 PC energy
   plot(log10(singular_values_R[[p]]), type = 'l', lwd=2,
        xlab='', ylab='', xaxt='n', yaxt='n', ylim=c(-20,10),
-       main = if(p==1) 'log10 PC energy', cex.main=1.5)
+       main = if(p==1) 'log10 singular values', cex.main=2)
   lines(log10(singular_values_R[[p]]))
   axis(side = 1, at = c(0,50,100), labels = c('0','50','100'), cex.axis = 1.5)
   axis(side = 2, at = c(-20,-10,0,10), labels = c('-20','-10','0','10'), cex.axis = 1.5)
@@ -242,10 +244,11 @@ for(p in 1:n_pattern){
   # leading PC energy
   plot(singular_values_R[[p]][1:10], type = 'l',lwd=2,
        xlab='', ylab='', xaxt='n', yaxt='n', ylim=c(0,30),
-       main = if(p==1) 'leading PC energy', cex.main=1.5)
+       main = if(p==1) '10 largest singular values', cex.main=2)
   axis(side = 1, at = c(0,5,10), labels = c('0','5','10'), cex.axis = 1.5)
   axis(side = 2, at = c(0,15,30), labels = c('0','15','30'), cex.axis = 1.5)
 }
+if(save_plot) dev.off()
 
 ####################
 ### SAVE RESULTS ###

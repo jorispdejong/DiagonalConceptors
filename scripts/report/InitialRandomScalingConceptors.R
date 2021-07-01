@@ -43,16 +43,11 @@ W_star_scaling <- 1
 leaking_rate <- 1
 
 # apertures
-apertures <- rep(7,n_pattern)
+apertures <- rep(100,n_pattern)
 apertures_2 <- apertures^-2
-
-# regularization
-reg_out <- 0
-reg_W <- 1e-3
 
 # other parameters
 verbose <- T
-save_results <- F
 
 #######################
 ### RESERVOIR SETUP ###
@@ -74,11 +69,11 @@ W_star <- W_star_raw * W_star_scaling
 # period lengths
 n_washout <- rep(100,n_pattern)
 n_adapt <- rep(500,n_pattern)
-n_learn <- n_points - n_washout
+n_learn <- n_points - n_adapt - n_washout
 
 ### DRIVE RESERVOIR ###
 # diagonal conceptors (initial randomly)
-cs <- lapply(1:n_pattern, FUN=function(p) matrix(runif(N),N,1))
+Cs <- lapply(1:n_pattern, FUN=function(p) diag(runif(N),N,N))
 
 # initialize empty collectors
 all_training_r <- c()
@@ -86,7 +81,6 @@ all_training_z_old <- c()
 all_training_D_target <- c()
 all_training_W_target <- c()
 all_training_output <- c()
-start_z <- list()
 # collect data from driving the reservoir with different drivers
 for(p in 1:n_pattern){
   pattern <- patterns[[p]]
@@ -104,57 +98,39 @@ for(p in 1:n_pattern){
   
   # initial state
   r <- matrix(0,N,1)
-  z <- cs[[p]] * r
+  z <- Cs[[p]] %*% r
   
   # create progress bar
   if(verbose) pb <- txtProgressBar(1,n_washout[p]+n_adapt[p]+n_learn[p])
-  for(n in 1:n_washout[p]){
+  for(n in 1:(n_washout[p]+n_adapt[p]+n_learn[p])){
     u <- pattern[n,]
-    r <- tanh(W_star %*% z + W_in %*% u + b)
-    z <- (1-leaking_rate) * z + leaking_rate * cs[[p]]*r
-    
-    if(n == n_washout[p]) start_z[[p]] <- z
-    
-    # update progress bar
-    if(verbose) setTxtProgressBar(pb, n)
-  }
-  
-  for(n in 1:n_adapt[p]){
-    u <- pattern[n_washout[p]+n,]
-    r <- tanh(W_star %*% z + W_in %*% u + b)
-    z <- (1-leaking_rate) * z + leaking_rate * cs[[p]]*r
-    
-    # collect z
-    z_collector[,n] <- z
-    
-    # compute diagonal conceptors
-    if(n==n_adapt[p]){
-      R_adj <- rowMeans(z_collector^2)
-      cs[[p]] <- R_adj*(R_adj+apertures_2[p])^-1
-    }
-    
-    # update progress bar
-    if(verbose) setTxtProgressBar(pb, n_washout[p] + n)
-  }
-  
-  z <- start_z[[p]]
-  for(n in 1:n_learn[p]){
-    u <- pattern[n_washout[p] + n,]
     z_old <- z
     D_target <- W_in %*% u
     W_target <- W_star %*% z_old + D_target
     r <- tanh(W_target + b)
-    z <- (1-leaking_rate) * z_old + leaking_rate * cs[[p]]*r
+    z <- (1-leaking_rate) * z_old + leaking_rate * Cs[[p]] %*% r
     
-    # collect states, output and G_target for computing W_out and G later
-    r_collector[,n] <- r
-    z_old_collector[,n] <- z_old
-    D_target_collector[,n] <- D_target
-    W_target_collector[,n] <- W_target
-    output_collector[,n] <- u
+    if(n > n_washout[p] && n <= n_washout[p]+n_adapt[p]){
+      z_collector[,n-n_washout[p]] <- z
+      
+      # compute diagonal conceptors
+      if(n==n_washout[p]+n_adapt[p]){
+        R <- (z_collector %*%t(z_collector))/n_learn[p]
+        Cs[[p]] <- computeConceptor(R, apertures[p])
+      } 
+    }
+    
+    if(n > n_washout[p]+n_adapt[p]){
+      # collect states, output and G_target for computing W_out and G later
+      r_collector[,n-n_washout[p]-n_adapt[p]] <- r
+      z_old_collector[,n-n_washout[p]-n_adapt[p]] <- z_old
+      D_target_collector[,n-n_washout[p]-n_adapt[p]] <- D_target
+      W_target_collector[,n-n_washout[p]-n_adapt[p]] <- W_target
+      output_collector[,n-n_washout[p]-n_adapt[p]] <- u
+    }
     
     # update progress bar
-    if(verbose) setTxtProgressBar(pb, n_washout[p] + n_adapt[p] + n)
+    if(verbose) setTxtProgressBar(pb, n)
   }
   
   # construct concatenated matrices
@@ -174,6 +150,10 @@ plotNeuronStates(X=all_training_r, n=20, l=50)
 #############################
 ### (RE)COMPUTING WEIGHTS ###
 #############################
+# regularization
+reg_out <- 1e-8
+reg_W <- 1e-3
+
 # compute the output weights
 cp_W_out <- computeOutputWeights(all_training_states = all_training_r, 
                                  all_training_output = all_training_output,
@@ -201,13 +181,13 @@ for(p in 1:n_pattern){
   
   # initial state
   r <- matrix(runif(N),N,1)
-  z <- cs[[p]] * r
+  z <- Cs[[p]] %*% r
   
   # create progress bar
   if(verbose) pb <- txtProgressBar(1,n_run[p]+n_washout2[p], style = 3)
   for(n in 1:(n_run[p]+n_washout2[p])){
     r <- tanh(W %*% z + b)
-    z <- (1-leaking_rate) * z + leaking_rate * cs[[p]]*r
+    z <- (1-leaking_rate) * z + leaking_rate * Cs[[p]] %*% r
     
     if(n > n_washout2[p]){
       output_collector[,n-n_washout2[p]] <- W_out %*% r
@@ -277,3 +257,4 @@ for(p in 1:n_pattern){
   axis(side = 1, at = c(0,5,10), labels = c('0','5','10'), cex.axis = 1.5)
   axis(side = 2, at = c(0,15,30), labels = c('0','15','30'), cex.axis = 1.5)
 }
+

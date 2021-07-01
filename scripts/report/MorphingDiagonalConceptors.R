@@ -18,7 +18,7 @@ source('source/GeneralFunctions.R')
 # 5 = chaotic attractors
 # 6 = human motion
 
-experiment <- 4
+experiment <- 7
 show_progress_bar <- T
 
 #########################
@@ -386,6 +386,107 @@ if(experiment %in% c(5)){
   # title(main = main_title, outer = T, cex.main=1.5, line = 0)
   title(main = 'Diagonal conceptors', outer = T, cex.main=3)
 }
+if(experiment %in% c(7)){
+  print(paste0('running experiment ', experiment, ', please wait...'))
+  
+  # load reservoir
+  load('output/reservoirs/reservoir_dc_ca.RData')
+  
+  # set variables
+  patterns <- reservoir$patterns
+  cs <- reservoir$cs
+  W <- reservoir$W
+  b <- reservoir$b
+  W_out <- reservoir$W_out
+  leaking_rate <- reservoir$leaking_rate
+  
+  # system dimensions
+  N <- nrow(W)
+  M <- nrow(W_out)
+  
+  # patterns
+  pattern_i <- 1
+  pattern_j <- 3
+  
+  # mu
+  mus <- seq(0,1,1/8)
+  
+  # period lengths
+  n_washout <- 100
+  n_morph <- 500
+
+  # initial state
+  r_init <- matrix(runif(N),N,1)
+  
+  output_collectors <- list()
+  for(i in 1:length(mus)){
+    mu <- mus[i]
+    c_morph <- (1-mu)*cs[[pattern_i]] + mu*cs[[pattern_j]]
+    
+    if(show_progress_bar) print(paste0('mu = ',mus[i]))
+    # output collector
+    output_collector <- matrix(0,n_morph,M)
+    
+    # init state
+    z <- c_morph * r_init
+    
+    # create progress bar
+    if(show_progress_bar) pb <- txtProgressBar(1,n_washout+n_morph, style = 3)
+    for(n in 1:(n_washout+n_morph)){
+      # update equation
+      r <- tanh(W %*% z + b)
+      z <- (1-leaking_rate) * z + leaking_rate * c_morph * r
+      
+      # collect output
+      if(n > n_washout){
+        output_collector[n-n_washout,] <- W_out %*% r
+      }
+      
+      # update progress bar
+      if(show_progress_bar) setTxtProgressBar(pb, n)
+    }
+    
+    output_collectors[[i]] <- output_collector
+  }
+  
+  
+  # plot a few outputs to see how the figure changes over time
+  n_outputs <- 9
+  main_title <- 'Rössler to Mackey-Glass'
+  
+  # plot the patterns
+  colfunc<-colorRampPalette(c("royalblue","springgreen"))
+  cols <- colfunc(n_outputs)
+  par(mfrow=c(ceiling(sqrt(n_outputs)),round(sqrt(n_outputs))), 
+      mar=rep(1,4), oma=c(0,0,4,0))
+  for(i in 1:n_outputs){
+    plot(output_collectors[[i]][,1], 
+         output_collectors[[i]][,2], 
+         type = 'l', lwd=2, col = cols[i], ylim=c(0,1), xlim=c(0,1),
+         xlab = '', ylab = '', xaxt='n', yaxt='n')
+    if(i == 1){
+      legend('bottomleft', expression(mu~"= 0"), cex=2, x.intersp = 0, text.width = 0.2, y.intersp = 0.1)
+    }else if(i==2){
+      legend('bottomleft', expression(mu~"= 0.125"), cex=2, x.intersp = 0, text.width = 0.35, y.intersp = 0.1)
+    }else if(i==3){
+      legend('bottomleft', expression(mu~"= 0.25"), cex=2, x.intersp = 0, text.width = 0.3, y.intersp = 0.1)
+    }else if(i==4){
+      legend('bottomleft', expression(mu~"= 0.375"), cex=2, x.intersp = 0, text.width = 0.35, y.intersp = 0.1)
+    }else if(i==5){
+      legend('bottomleft', expression(mu~"= 0.5"), cex=2, x.intersp = 0, text.width = 0.25, y.intersp = 0.1)
+    }else if(i==6){
+      legend('bottomleft', expression(mu~"= 0.625"), cex=2, x.intersp = 0, text.width = 0.35, y.intersp = 0.1)
+    }else if(i==7){
+      legend('bottomleft', expression(mu~"= 0.75"), cex=2, x.intersp = 0, text.width = 0.3, y.intersp = 0.1)
+    }else if(i==8){
+      legend('bottomleft', expression(mu~"= 0.875"), cex=2, x.intersp = 0, text.width = 0.35, y.intersp = 0.1)
+    }else if(i==9){
+      legend('bottomleft', expression(mu~"= 1"), cex=2, x.intersp = 0, text.width = 0.2, y.intersp = 0.1)
+    }
+  }
+  # title(main = main_title, outer = T, cex.main=1.5, line = 0)
+  title(main = 'Diagonal conceptors', outer = T, cex.main=3)
+}
 
 ####################
 ### HUMAN MOTION ###
@@ -454,7 +555,7 @@ if(experiment %in% c(6)){
       mu <- mu_max
     }
     
-    # nudge reservoir to correct state after morphing
+    # nudge reservoir to correct state during morphing
     if(n >= n_before_morph && n <= n_before_morph + n_morph){
       z <- (1-mu)*z + mu*start_z[[pattern_j]]
     }

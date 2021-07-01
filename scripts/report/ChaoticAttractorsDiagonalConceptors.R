@@ -156,8 +156,6 @@ plotNeuronStates(X=all_training_r, n=20, l=50)
 # regularization
 reg_out <- 0
 reg_W <- 0.01
-compute_D <- F
-if(compute_D) reg_D <- 1e-2
 
 # compute the output weights
 cp_W_out <- computeOutputWeights(all_training_states = all_training_r, 
@@ -166,18 +164,10 @@ cp_W_out <- computeOutputWeights(all_training_states = all_training_r,
 W_out <- cp_W_out$W_out
 
 # recompute reservoir weights (loading the patterns into the reservoir)
-if(compute_D){
-  cp_D <- recomputeReservoirWeights(all_training_states_old = all_training_z_old,
-                                    all_training_W_target = all_training_D_target,
-                                    reg_W = reg_D, verbose = verbose)
-  D <- cp_D$W
-  W <- W_star + D
-}else{
-  cp_W <- recomputeReservoirWeights(all_training_states_old = all_training_z_old, 
-                                    all_training_W_target = all_training_W_target,
-                                    reg_W = reg_W, verbose = verbose)
-  W <- cp_W$W
-}
+cp_W <- recomputeReservoirWeights(all_training_states_old = all_training_z_old, 
+                                  all_training_W_target = all_training_W_target,
+                                  reg_W = reg_W, verbose = verbose)
+W <- cp_W$W
 
 ##############################
 ### SELF-GENERATE PATTERNS ###
